@@ -49,14 +49,17 @@ jobs:
       REMOTE_USER: ${{ secrets.REMOTE_USER }}
       REMOTE_PORT: ${{ secrets.REMOTE_PORT || '22' }}
       PACKAGE_FILE: /tmp/short-link-deploy-${{ github.run_id }}.tar.gz
+      ENV_FILE: /tmp/short-link-env-${{ github.run_id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -p "$REMOTE_PORT" "$REMOTE_HOST" >> ~/.ssh/known_hosts
 
@@ -74,7 +77,20 @@ jobs:
             --exclude='design-qa.md' \
             -czf "$RUNNER_TEMP/short-link-deploy-${GITHUB_RUN_ID}.tar.gz" .
 
-      - name: Upload package via SCP
+      - name: Create production env file
+        env:
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+        run: |
+          if [ -z "$PRODUCTION_ENV_FILE" ]; then
+            echo "PRODUCTION_ENV_FILE secret is empty." >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$PRODUCTION_ENV_FILE" \
+            > "$RUNNER_TEMP/short-link-env-${GITHUB_RUN_ID}"
+          chmod 600 "$RUNNER_TEMP/short-link-env-${GITHUB_RUN_ID}"
+
+      - name: Upload package and env via SCP
         run: |
           scp \
             -P "$REMOTE_PORT" \
@@ -82,18 +98,26 @@ jobs:
             "$RUNNER_TEMP/short-link-deploy-${GITHUB_RUN_ID}.tar.gz" \
             "$REMOTE_USER@$REMOTE_HOST:$PACKAGE_FILE"
 
+          scp \
+            -P "$REMOTE_PORT" \
+            -i ~/.ssh/id_ed25519 \
+            "$RUNNER_TEMP/short-link-env-${GITHUB_RUN_ID}" \
+            "$REMOTE_USER@$REMOTE_HOST:$ENV_FILE"
+
       - name: Deploy with Docker Compose
         run: |
           ssh \
             -p "$REMOTE_PORT" \
             -i ~/.ssh/id_ed25519 \
             "$REMOTE_USER@$REMOTE_HOST" \
-            "PACKAGE_FILE='$PACKAGE_FILE' DEPLOY_DIR='/app/short-link' bash -s" <<'REMOTE_SCRIPT'
+            "PACKAGE_FILE='$PACKAGE_FILE' ENV_FILE='$ENV_FILE' DEPLOY_DIR='/app/short-link' bash -s" <<'REMOTE_SCRIPT'
             set -eu
+            trap 'rm -f "$PACKAGE_FILE" "$ENV_FILE"' EXIT
 
             command -v docker >/dev/null
             docker compose version >/dev/null
             tar -tzf "$PACKAGE_FILE" >/dev/null
+            test -s "$ENV_FILE"
 
             mkdir -p "$DEPLOY_DIR" "$DEPLOY_DIR/data"
 
@@ -105,11 +129,7 @@ jobs:
               -exec rm -rf {} +
 
             tar -xzf "$PACKAGE_FILE" -C "$DEPLOY_DIR"
-
-            if [ ! -f "$DEPLOY_DIR/.env" ]; then
-              echo "Missing $DEPLOY_DIR/.env; create it from .env.example before deploying." >&2
-              exit 1
-            fi
+            install -m 600 "$ENV_FILE" "$DEPLOY_DIR/.env"
 
             cd "$DEPLOY_DIR"
             docker compose up -d --build --remove-orphans
@@ -140,5 +160,4 @@ jobs:
             fi
 
             docker image prune -f
-            rm -f "$PACKAGE_FILE"
           REMOTE_SCRIPT

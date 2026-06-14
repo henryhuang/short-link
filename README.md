@@ -48,14 +48,6 @@ NODE_ENV=production npm start
 ```bash
 sudo mkdir -p /app/short-link/data
 sudo chown -R "$USER":"$USER" /app/short-link
-cp .env.example /app/short-link/.env
-```
-
-修改 `/app/short-link/.env` 中的管理员密码、Session 密钥和公开域名，然后运行：
-
-```bash
-cd /app/short-link
-docker compose up -d --build
 ```
 
 `APP_UID` 和 `APP_GID` 应填写服务器上 `/app/short-link/data` 所有者的
@@ -75,9 +67,25 @@ Docker Hub、GHCR 或其他镜像仓库。
 | `REMOTE_USER` | SSH 用户 |
 | `REMOTE_PORT` | SSH 端口，可不填，默认 `22` |
 | `SSH_PRIVATE_KEY` | SSH 私钥 |
+| `PRODUCTION_ENV_FILE` | 完整的生产环境 `.env` 文件内容，多行 Secret |
 
-远程部署会保留 `/app/short-link/.env` 和 `/app/short-link/data/`，替换其他
-应用文件，然后执行 `docker compose up -d --build --remove-orphans`。
+`PRODUCTION_ENV_FILE` 可参考 `.env.example`，例如：
+
+```dotenv
+PORT=9000
+HOST_PORT=9000
+APP_UID=1000
+APP_GID=1000
+DB_PATH=/app/short-link/data/short-link.db
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=replace-me
+SESSION_SECRET=replace-with-a-long-random-string
+PUBLIC_BASE_URL=https://short.example.com
+```
+
+远程部署会由 GitHub Actions 将该 Secret 写入 `/app/short-link/.env`，保留
+`/app/short-link/data/`，替换其他应用文件，然后执行
+`docker compose up -d --build --remove-orphans`。
 
 ## 环境变量
 

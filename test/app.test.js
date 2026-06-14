@@ -41,6 +41,59 @@ test("health endpoint checks database availability", async () => {
   assert.deepEqual(response.body, { status: "ok" });
 });
 
+test("secure session cookie works behind HTTPS proxy", async () => {
+  const secureApp = createApp({
+    db,
+    adminUsername: "admin",
+    adminPassword: "secret",
+    sessionSecret: "secure-session-secret",
+    publicBaseUrl: "https://short.test",
+    cookieSecure: true,
+  });
+  const response = await request(secureApp)
+    .post("/api/auth/login")
+    .set("X-Forwarded-Proto", "https")
+    .send({ username: "admin", password: "secret" });
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers["set-cookie"][0], /;\s*Secure/i);
+
+  const cookie = response.headers["set-cookie"][0].split(";")[0];
+  const currentUser = await request(secureApp)
+    .get("/api/auth/me")
+    .set("X-Forwarded-Proto", "https")
+    .set("Cookie", cookie);
+  assert.equal(currentUser.status, 200);
+  assert.deepEqual(currentUser.body, { user: { username: "admin" } });
+});
+
+test("production routes redirect home and serve admin only", async () => {
+  const distDir = path.join(tempDir, "dist");
+  fs.mkdirSync(distDir, { recursive: true });
+  fs.writeFileSync(path.join(distDir, "index.html"), "<html>admin</html>");
+
+  const productionApp = createApp({
+    db,
+    adminUsername: "admin",
+    adminPassword: "secret",
+    sessionSecret: "production-session-secret",
+    publicBaseUrl: "https://l.cnhalo.com",
+    distDir,
+    isProduction: true,
+  });
+
+  const home = await request(productionApp).get("/");
+  assert.equal(home.status, 302);
+  assert.equal(home.headers.location, "https://cnhalo.com");
+
+  const admin = await request(productionApp).get("/admin");
+  assert.equal(admin.status, 200);
+  assert.match(admin.text, /admin/);
+
+  const unknown = await request(productionApp).get("/not-an-admin-route");
+  assert.equal(unknown.status, 404);
+});
+
 test("admin can login and manage a mapping", async () => {
   const login = await agent
     .post("/api/auth/login")

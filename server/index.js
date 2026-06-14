@@ -31,6 +31,7 @@ const app = createApp({
   adminPassword,
   sessionSecret,
   sessionStore,
+  cookieSecure: process.env.SESSION_COOKIE_SECURE === "true",
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || `http://localhost:${port}`).replace(/\/$/, ""),
   distDir: path.join(rootDir, "dist"),
   isProduction: process.env.NODE_ENV === "production",

@@ -53,23 +53,26 @@ export function createApp({
   sessionSecret,
   publicBaseUrl,
   sessionStore,
+  cookieSecure = false,
   distDir = path.resolve("dist"),
   isProduction = false,
 }) {
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", 1);
   app.use(express.json({ limit: "32kb" }));
   app.use(
     session({
       name: "shortlink.sid",
       store: sessionStore,
+      proxy: true,
       secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
         sameSite: "lax",
-        secure: isProduction,
+        secure: cookieSecure,
         maxAge: 8 * 60 * 60 * 1000,
       },
     }),
@@ -96,7 +99,10 @@ export function createApp({
     req.session.regenerate((error) => {
       if (error) return res.status(500).json({ message: "登录失败，请重试" });
       req.session.user = { username: adminUsername };
-      res.json({ user: req.session.user });
+      req.session.save((saveError) => {
+        if (saveError) return res.status(500).json({ message: "登录失败，请重试" });
+        res.json({ user: req.session.user });
+      });
     });
   });
 
@@ -220,8 +226,10 @@ export function createApp({
   });
 
   if (isProduction) {
-    app.use(express.static(distDir));
-    app.get("/{*path}", (_req, res) => res.sendFile(path.join(distDir, "index.html")));
+    app.get("/", (_req, res) => res.redirect(302, "https://cnhalo.com"));
+    app.use(express.static(distDir, { index: false }));
+    app.get("/admin", (_req, res) => res.sendFile(path.join(distDir, "index.html")));
+    app.get("/admin/{*path}", (_req, res) => res.sendFile(path.join(distDir, "index.html")));
   }
 
   app.use((error, _req, res, _next) => {

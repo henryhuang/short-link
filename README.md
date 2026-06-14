@@ -85,12 +85,54 @@ DB_PATH=/app/short-link/data/short-link.db
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=replace-me
 SESSION_SECRET=replace-with-a-long-random-string
-PUBLIC_BASE_URL=https://short.example.com
+SESSION_COOKIE_SECURE=true
+PUBLIC_BASE_URL=https://l.cnhalo.com
 ```
 
 远程部署会由 GitHub Actions 将该 Secret 写入 `/app/short-link/.env`，保留
 `/app/short-link/data/`，加载 SCP 传输的镜像，然后执行
 `docker compose up -d --no-build --remove-orphans`。
+
+### Nginx HTTPS 反向代理
+
+项目提供了域名 `l.cnhalo.com` 的配置：
+
+```text
+deploy/nginx/l.cnhalo.com.conf
+```
+
+安装到宿主机 Nginx：
+
+```bash
+sudo cp /app/short-link/deploy/nginx/l.cnhalo.com.conf \
+  /etc/nginx/conf.d/l.cnhalo.com.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+配置包含 HTTP 到 HTTPS 跳转和 HTTPS 反向代理。默认证书路径为：
+
+```text
+/etc/letsencrypt/live/l.cnhalo.com/fullchain.pem
+/etc/letsencrypt/live/l.cnhalo.com/privkey.pem
+```
+
+如果证书位于其他目录，请修改配置。将 `l.cnhalo.com` 的 DNS A/AAAA
+记录指向服务器，并在 `PRODUCTION_ENV_FILE` 中配置：
+
+```dotenv
+SESSION_COOKIE_SECURE=true
+PUBLIC_BASE_URL=https://l.cnhalo.com
+```
+
+Docker 端口仅绑定到 `127.0.0.1:9000`，外部请求统一通过 Nginx 的 80
+和 443 端口访问。
+
+访问行为：
+
+- `https://l.cnhalo.com/` 跳转到 `https://cnhalo.com`
+- `https://l.cnhalo.com/admin` 打开管理后台
+- `https://l.cnhalo.com/r/{code}` 执行短链跳转
 
 ## 环境变量
 
@@ -106,6 +148,7 @@ PUBLIC_BASE_URL=https://short.example.com
 | `ADMIN_USERNAME` | 管理员用户名 | 必填 |
 | `ADMIN_PASSWORD` | 管理员密码 | 必填 |
 | `SESSION_SECRET` | Session 签名密钥 | 必填 |
+| `SESSION_COOKIE_SECURE` | 是否仅通过 HTTPS 发送 Session Cookie | HTTPS 部署为 `true` |
 | `PUBLIC_BASE_URL` | 生成短地址时使用的公开服务地址 | `http://localhost:$PORT` |
 
 ## 测试

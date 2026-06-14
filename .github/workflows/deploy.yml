@@ -49,6 +49,7 @@ jobs:
       REMOTE_USER: ${{ secrets.REMOTE_USER }}
       REMOTE_PORT: ${{ secrets.REMOTE_PORT || '22' }}
       PACKAGE_FILE: /tmp/short-link-deploy-${{ github.run_id }}.tar.gz
+      LOCAL_PACKAGE_FILE: ${{ runner.temp }}/short-link-deploy-${{ github.run_id }}.tar.gz
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -72,14 +73,14 @@ jobs:
             --exclude='.npm-cache' \
             --exclude='qa' \
             --exclude='design-qa.md' \
-            -czf short-link-deploy.tar.gz .
+            -czf "$LOCAL_PACKAGE_FILE" .
 
       - name: Upload package via SCP
         run: |
           scp \
             -P "$REMOTE_PORT" \
             -i ~/.ssh/id_ed25519 \
-            short-link-deploy.tar.gz \
+            "$LOCAL_PACKAGE_FILE" \
             "$REMOTE_USER@$REMOTE_HOST:$PACKAGE_FILE"
 
       - name: Deploy with Docker Compose

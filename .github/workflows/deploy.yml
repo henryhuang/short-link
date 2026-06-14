@@ -155,6 +155,27 @@ jobs:
             install -m 600 "$ENV_FILE" "$DEPLOY_DIR/.env"
             docker load --input "$IMAGE_FILE"
 
+            app_uid="$(sed -n 's/^APP_UID=//p' "$DEPLOY_DIR/.env" | tail -n 1 | tr -d '\r')"
+            app_gid="$(sed -n 's/^APP_GID=//p' "$DEPLOY_DIR/.env" | tail -n 1 | tr -d '\r')"
+            app_uid="${app_uid:-1000}"
+            app_gid="${app_gid:-1000}"
+
+            case "$app_uid" in *[!0-9]*)
+              echo "APP_UID must be numeric." >&2
+              exit 1
+            esac
+            case "$app_gid" in *[!0-9]*)
+              echo "APP_GID must be numeric." >&2
+              exit 1
+            esac
+
+            docker run --rm \
+              --user 0:0 \
+              --volume "$DEPLOY_DIR/data:/app/short-link/data" \
+              --entrypoint sh \
+              "short-link:$IMAGE_TAG" \
+              -c "chown -R '$app_uid:$app_gid' /app/short-link/data && chmod -R u+rwX /app/short-link/data"
+
             cd "$DEPLOY_DIR"
             IMAGE_TAG="$IMAGE_TAG" docker compose up -d --no-build --remove-orphans
 

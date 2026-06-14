@@ -52,6 +52,8 @@ sudo chown -R "$USER":"$USER" /app/short-link
 
 `APP_UID` 和 `APP_GID` 应填写服务器上 `/app/short-link/data` 所有者的
 UID/GID，可通过 `id -u` 和 `id -g` 获取。默认均为 `1000`。
+部署工作流会在启动容器前自动将数据目录及已有数据库文件的所有权修正为
+该 UID/GID。
 
 ### GitHub Actions
 

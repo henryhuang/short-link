@@ -1,0 +1,30 @@
+services:
+  short-link:
+    container_name: short-link
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 9000
+      DB_PATH: /app/short-link/data/short-link.db
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    ports:
+      - "${HOST_PORT:-9000}:9000"
+    volumes:
+      - /app/short-link/data:/app/short-link/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:9000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

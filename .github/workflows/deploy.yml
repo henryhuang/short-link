@@ -1,0 +1,144 @@
+name: Build and Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+      - "design-qa.md"
+      - "qa/**"
+
+concurrency:
+  group: short-link-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify Project
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build web application
+        run: npm run build
+
+      - name: Build Docker image
+        run: docker build --tag short-link:${{ github.sha }} .
+
+  deploy:
+    name: Deploy to Server
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+      REMOTE_USER: ${{ secrets.REMOTE_USER }}
+      REMOTE_PORT: ${{ secrets.REMOTE_PORT || '22' }}
+      PACKAGE_FILE: /tmp/short-link-deploy-${{ github.run_id }}.tar.gz
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$REMOTE_PORT" "$REMOTE_HOST" >> ~/.ssh/known_hosts
+
+      - name: Create deployment package
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.env' \
+            --exclude='data' \
+            --exclude='dist' \
+            --exclude='node_modules' \
+            --exclude='.npm-cache' \
+            --exclude='qa' \
+            --exclude='design-qa.md' \
+            -czf short-link-deploy.tar.gz .
+
+      - name: Upload package via SCP
+        run: |
+          scp \
+            -P "$REMOTE_PORT" \
+            -i ~/.ssh/id_ed25519 \
+            short-link-deploy.tar.gz \
+            "$REMOTE_USER@$REMOTE_HOST:$PACKAGE_FILE"
+
+      - name: Deploy with Docker Compose
+        run: |
+          ssh \
+            -p "$REMOTE_PORT" \
+            -i ~/.ssh/id_ed25519 \
+            "$REMOTE_USER@$REMOTE_HOST" \
+            "PACKAGE_FILE='$PACKAGE_FILE' DEPLOY_DIR='/app/short-link' bash -s" <<'REMOTE_SCRIPT'
+            set -eu
+
+            command -v docker >/dev/null
+            docker compose version >/dev/null
+            tar -tzf "$PACKAGE_FILE" >/dev/null
+
+            mkdir -p "$DEPLOY_DIR" "$DEPLOY_DIR/data"
+
+            find "$DEPLOY_DIR" \
+              -mindepth 1 \
+              -maxdepth 1 \
+              ! -name '.env' \
+              ! -name 'data' \
+              -exec rm -rf {} +
+
+            tar -xzf "$PACKAGE_FILE" -C "$DEPLOY_DIR"
+
+            if [ ! -f "$DEPLOY_DIR/.env" ]; then
+              echo "Missing $DEPLOY_DIR/.env; create it from .env.example before deploying." >&2
+              exit 1
+            fi
+
+            cd "$DEPLOY_DIR"
+            docker compose up -d --build --remove-orphans
+
+            attempt=0
+            while [ "$attempt" -lt 30 ]; do
+              health_status="$(docker inspect \
+                --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+                short-link 2>/dev/null || true)"
+
+              if [ "$health_status" = "healthy" ]; then
+                break
+              fi
+
+              if [ "$health_status" = "unhealthy" ] || [ "$health_status" = "exited" ]; then
+                docker compose logs --no-color short-link
+                exit 1
+              fi
+
+              attempt=$((attempt + 1))
+              sleep 2
+            done
+
+            if [ "$health_status" != "healthy" ]; then
+              docker compose logs --no-color short-link
+              echo "Container did not become healthy in time." >&2
+              exit 1
+            fi
+
+            docker image prune -f
+            rm -f "$PACKAGE_FILE"
+          REMOTE_SCRIPT

@@ -1,6 +1,7 @@
 services:
   short-link:
     container_name: short-link
+    image: "short-link:${IMAGE_TAG:-latest}"
     build:
       context: .
       dockerfile: Dockerfile

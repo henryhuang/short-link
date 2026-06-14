@@ -38,7 +38,16 @@ jobs:
         run: npm run build
 
       - name: Build Docker image
-        run: docker build --tag short-link:${{ github.sha }} .
+        run: |
+          docker build --tag "short-link:${GITHUB_SHA}" .
+          docker save "short-link:${GITHUB_SHA}" | gzip > short-link-image.tar.gz
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: short-link-image
+          path: short-link-image.tar.gz
+          retention-days: 1
 
   deploy:
     name: Deploy to Server
@@ -50,9 +59,16 @@ jobs:
       REMOTE_PORT: ${{ secrets.REMOTE_PORT || '22' }}
       PACKAGE_FILE: /tmp/short-link-deploy-${{ github.run_id }}.tar.gz
       ENV_FILE: /tmp/short-link-env-${{ github.run_id }}
+      IMAGE_FILE: /tmp/short-link-image-${{ github.run_id }}.tar.gz
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: short-link-image
+          path: ${{ runner.temp }}
 
       - name: Configure SSH
         env:
@@ -90,7 +106,7 @@ jobs:
             > "$RUNNER_TEMP/short-link-env-${GITHUB_RUN_ID}"
           chmod 600 "$RUNNER_TEMP/short-link-env-${GITHUB_RUN_ID}"
 
-      - name: Upload package and env via SCP
+      - name: Upload package, image and env via SCP
         run: |
           scp \
             -P "$REMOTE_PORT" \
@@ -104,20 +120,27 @@ jobs:
             "$RUNNER_TEMP/short-link-env-${GITHUB_RUN_ID}" \
             "$REMOTE_USER@$REMOTE_HOST:$ENV_FILE"
 
+          scp \
+            -P "$REMOTE_PORT" \
+            -i ~/.ssh/id_ed25519 \
+            "$RUNNER_TEMP/short-link-image.tar.gz" \
+            "$REMOTE_USER@$REMOTE_HOST:$IMAGE_FILE"
+
       - name: Deploy with Docker Compose
         run: |
           ssh \
             -p "$REMOTE_PORT" \
             -i ~/.ssh/id_ed25519 \
             "$REMOTE_USER@$REMOTE_HOST" \
-            "PACKAGE_FILE='$PACKAGE_FILE' ENV_FILE='$ENV_FILE' DEPLOY_DIR='/app/short-link' bash -s" <<'REMOTE_SCRIPT'
+            "PACKAGE_FILE='$PACKAGE_FILE' ENV_FILE='$ENV_FILE' IMAGE_FILE='$IMAGE_FILE' IMAGE_TAG='$GITHUB_SHA' DEPLOY_DIR='/app/short-link' bash -s" <<'REMOTE_SCRIPT'
             set -eu
-            trap 'rm -f "$PACKAGE_FILE" "$ENV_FILE"' EXIT
+            trap 'rm -f "$PACKAGE_FILE" "$ENV_FILE" "$IMAGE_FILE"' EXIT
 
             command -v docker >/dev/null
             docker compose version >/dev/null
             tar -tzf "$PACKAGE_FILE" >/dev/null
             test -s "$ENV_FILE"
+            gzip -t "$IMAGE_FILE"
 
             mkdir -p "$DEPLOY_DIR" "$DEPLOY_DIR/data"
 
@@ -130,9 +153,10 @@ jobs:
 
             tar -xzf "$PACKAGE_FILE" -C "$DEPLOY_DIR"
             install -m 600 "$ENV_FILE" "$DEPLOY_DIR/.env"
+            docker load --input "$IMAGE_FILE"
 
             cd "$DEPLOY_DIR"
-            docker compose up -d --build --remove-orphans
+            IMAGE_TAG="$IMAGE_TAG" docker compose up -d --no-build --remove-orphans
 
             attempt=0
             while [ "$attempt" -lt 30 ]; do

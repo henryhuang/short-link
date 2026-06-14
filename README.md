@@ -55,8 +55,9 @@ UID/GID，可通过 `id -u` 和 `id -g` 获取。默认均为 `1000`。
 
 ### GitHub Actions
 
-工作流位于 `.github/workflows/deploy.yml`。它会运行测试和构建 Docker
-镜像验证，然后将部署压缩包通过 SCP 发送到服务器；不会上传镜像到
+工作流位于 `.github/workflows/deploy.yml`。它会在 GitHub Runner 构建
+Docker 镜像，通过 `docker save` 导出，再将镜像文件、应用配置和 env
+文件通过 SCP 发送到服务器。服务器只执行 `docker load`，不会访问或上传
 Docker Hub、GHCR 或其他镜像仓库。
 
 需要配置以下 GitHub Actions Secrets：
@@ -75,6 +76,7 @@ Docker Hub、GHCR 或其他镜像仓库。
 PORT=9000
 HOST_PORT=9000
 NODE_IMAGE=node:22-alpine
+IMAGE_TAG=latest
 APP_UID=1000
 APP_GID=1000
 DB_PATH=/app/short-link/data/short-link.db
@@ -84,19 +86,9 @@ SESSION_SECRET=replace-with-a-long-random-string
 PUBLIC_BASE_URL=https://short.example.com
 ```
 
-如果服务器无法访问 Docker Hub，可将 `NODE_IMAGE` 改为服务器可访问的镜像
-代理，例如：
-
-```dotenv
-NODE_IMAGE=docker.m.daocloud.io/library/node:22-alpine
-```
-
-也可以替换为你自己的 Docker Hub 镜像代理地址。该配置只用于拉取 Node.js
-基础镜像，不会上传本项目镜像。
-
 远程部署会由 GitHub Actions 将该 Secret 写入 `/app/short-link/.env`，保留
-`/app/short-link/data/`，替换其他应用文件，然后执行
-`docker compose up -d --build --remove-orphans`。
+`/app/short-link/data/`，加载 SCP 传输的镜像，然后执行
+`docker compose up -d --no-build --remove-orphans`。
 
 ## 环境变量
 
@@ -105,6 +97,7 @@ NODE_IMAGE=docker.m.daocloud.io/library/node:22-alpine
 | `PORT` | 服务端口 | `9000` |
 | `HOST_PORT` | Docker 映射到宿主机的端口 | `9000` |
 | `NODE_IMAGE` | Docker 构建使用的 Node.js 22 Alpine 基础镜像 | `node:22-alpine` |
+| `IMAGE_TAG` | 本地手动部署使用的镜像标签；CI 会覆盖为提交 SHA | `latest` |
 | `APP_UID` | 容器进程使用的宿主机 UID | `1000` |
 | `APP_GID` | 容器进程使用的宿主机 GID | `1000` |
 | `DB_PATH` | SQLite 数据库文件地址 | `/app/short-link/data/short-link.db` |

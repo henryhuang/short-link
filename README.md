@@ -74,6 +74,7 @@ Docker Hub、GHCR 或其他镜像仓库。
 ```dotenv
 PORT=9000
 HOST_PORT=9000
+NODE_IMAGE=node:22-alpine
 APP_UID=1000
 APP_GID=1000
 DB_PATH=/app/short-link/data/short-link.db
@@ -82,6 +83,16 @@ ADMIN_PASSWORD=replace-me
 SESSION_SECRET=replace-with-a-long-random-string
 PUBLIC_BASE_URL=https://short.example.com
 ```
+
+如果服务器无法访问 Docker Hub，可将 `NODE_IMAGE` 改为服务器可访问的镜像
+代理，例如：
+
+```dotenv
+NODE_IMAGE=docker.m.daocloud.io/library/node:22-alpine
+```
+
+也可以替换为你自己的 Docker Hub 镜像代理地址。该配置只用于拉取 Node.js
+基础镜像，不会上传本项目镜像。
 
 远程部署会由 GitHub Actions 将该 Secret 写入 `/app/short-link/.env`，保留
 `/app/short-link/data/`，替换其他应用文件，然后执行
@@ -93,6 +104,7 @@ PUBLIC_BASE_URL=https://short.example.com
 | --- | --- | --- |
 | `PORT` | 服务端口 | `9000` |
 | `HOST_PORT` | Docker 映射到宿主机的端口 | `9000` |
+| `NODE_IMAGE` | Docker 构建使用的 Node.js 22 Alpine 基础镜像 | `node:22-alpine` |
 | `APP_UID` | 容器进程使用的宿主机 UID | `1000` |
 | `APP_GID` | 容器进程使用的宿主机 GID | `1000` |
 | `DB_PATH` | SQLite 数据库文件地址 | `/app/short-link/data/short-link.db` |

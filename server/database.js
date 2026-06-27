@@ -2,12 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 
-export function createDatabase(filename) {
+const JOURNAL_MODES = new Set(["DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"]);
+
+export function createDatabase(filename, options = {}) {
   const resolved = path.resolve(filename);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
 
   const db = new Database(resolved);
-  db.pragma("journal_mode = WAL");
+  const journalMode = String(options.journalMode || process.env.SQLITE_JOURNAL_MODE || "DELETE").toUpperCase();
+  if (!JOURNAL_MODES.has(journalMode)) {
+    throw new Error(`Unsupported SQLite journal mode: ${journalMode}`);
+  }
+  db.pragma(`journal_mode = ${journalMode}`);
   db.pragma("foreign_keys = ON");
   db.exec(`
     CREATE TABLE IF NOT EXISTS mappings (

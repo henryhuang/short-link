@@ -41,6 +41,19 @@ test("health endpoint checks database availability", async () => {
   assert.deepEqual(response.body, { status: "ok" });
 });
 
+test("database defaults to delete journal mode", () => {
+  assert.equal(db.pragma("journal_mode", { simple: true }), "delete");
+});
+
+test("database can opt into wal journal mode", () => {
+  const walDb = createDatabase(path.join(tempDir, "wal.db"), { journalMode: "wal" });
+  try {
+    assert.equal(walDb.pragma("journal_mode", { simple: true }), "wal");
+  } finally {
+    walDb.close();
+  }
+});
+
 test("secure session cookie works behind HTTPS proxy", async () => {
   const secureApp = createApp({
     db,

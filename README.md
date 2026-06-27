@@ -82,6 +82,7 @@ IMAGE_TAG=latest
 APP_UID=1000
 APP_GID=1000
 DB_PATH=/app/short-link/data/short-link.db
+SQLITE_JOURNAL_MODE=DELETE
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=replace-me
 SESSION_SECRET=replace-with-a-long-random-string
@@ -145,6 +146,7 @@ Docker 端口仅绑定到 `127.0.0.1:9000`，外部请求统一通过 Nginx 的 
 | `APP_UID` | 容器进程使用的宿主机 UID | `1000` |
 | `APP_GID` | 容器进程使用的宿主机 GID | `1000` |
 | `DB_PATH` | SQLite 数据库文件地址 | `/app/short-link/data/short-link.db` |
+| `SQLITE_JOURNAL_MODE` | SQLite journal 模式，可设为 `WAL`；默认 `DELETE` 避免部署挂载目录需要 `-shm` 文件 | `DELETE` |
 | `ADMIN_USERNAME` | 管理员用户名 | 必填 |
 | `ADMIN_PASSWORD` | 管理员密码 | 必填 |
 | `SESSION_SECRET` | Session 签名密钥 | 必填 |

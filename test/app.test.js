@@ -54,6 +54,24 @@ test("database can opt into wal journal mode", () => {
   }
 });
 
+test("database backs up wal sidecar files before using delete journal mode", () => {
+  const databasePath = path.join(tempDir, "sidecar.db");
+  fs.writeFileSync(`${databasePath}-wal`, "stale wal");
+  fs.writeFileSync(`${databasePath}-shm`, "stale shm");
+
+  const sidecarDb = createDatabase(databasePath);
+  try {
+    assert.equal(sidecarDb.pragma("journal_mode", { simple: true }), "delete");
+  } finally {
+    sidecarDb.close();
+  }
+
+  assert.equal(fs.existsSync(`${databasePath}-wal`), false);
+  assert.equal(fs.existsSync(`${databasePath}-shm`), false);
+  assert.equal(fs.readdirSync(tempDir).filter((name) => name.startsWith("sidecar.db-wal.bak-")).length, 1);
+  assert.equal(fs.readdirSync(tempDir).filter((name) => name.startsWith("sidecar.db-shm.bak-")).length, 1);
+});
+
 test("secure session cookie works behind HTTPS proxy", async () => {
   const secureApp = createApp({
     db,

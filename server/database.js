@@ -4,15 +4,29 @@ import Database from "better-sqlite3";
 
 const JOURNAL_MODES = new Set(["DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"]);
 
+function backupWalSidecarFiles(filename) {
+  const backupSuffix = `.bak-${Date.now()}`;
+  for (const suffix of ["-wal", "-shm"]) {
+    const sidecar = `${filename}${suffix}`;
+    if (fs.existsSync(sidecar)) {
+      fs.renameSync(sidecar, `${sidecar}${backupSuffix}`);
+    }
+  }
+}
+
 export function createDatabase(filename, options = {}) {
   const resolved = path.resolve(filename);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
 
-  const db = new Database(resolved);
   const journalMode = String(options.journalMode || process.env.SQLITE_JOURNAL_MODE || "DELETE").toUpperCase();
   if (!JOURNAL_MODES.has(journalMode)) {
     throw new Error(`Unsupported SQLite journal mode: ${journalMode}`);
   }
+  if (journalMode !== "WAL") {
+    backupWalSidecarFiles(resolved);
+  }
+
+  const db = new Database(resolved);
   db.pragma(`journal_mode = ${journalMode}`);
   db.pragma("foreign_keys = ON");
   db.exec(`

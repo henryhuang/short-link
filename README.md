@@ -153,6 +153,10 @@ Docker 端口仅绑定到 `127.0.0.1:9000`，外部请求统一通过 Nginx 的 
 | `SESSION_COOKIE_SECURE` | 是否仅通过 HTTPS 发送 Session Cookie | HTTPS 部署为 `true` |
 | `PUBLIC_BASE_URL` | 生成短地址时使用的公开服务地址 | `http://localhost:$PORT` |
 
+默认 `SQLITE_JOURNAL_MODE=DELETE` 时，应用启动前会将同名
+`*.db-wal` / `*.db-shm` 文件备份为 `.bak-*`，避免已有 WAL 辅助文件导致
+挂载目录上的 SQLite shared-memory resize 错误。
+
 ## 测试
 
 ```bash

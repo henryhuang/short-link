@@ -276,12 +276,12 @@ function Dashboard({ user, onLogout }) {
   const columns = useMemo(
     () => [
       {
-        title: "短地址",
+        title: "短码",
         dataIndex: "shortUrl",
-        width: 205,
+        width: 180,
         render: (_, record) => (
           <div className="url-cell">
-            <a href={record.shortUrl} target="_blank" rel="noreferrer">{record.shortUrl}</a>
+            <a href={record.shortUrl} target="_blank" rel="noreferrer">{record.code}</a>
             <Button
               aria-label={`复制 ${record.code}`}
               type="text"

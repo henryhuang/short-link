@@ -174,7 +174,7 @@ jobs:
               --volume "$DEPLOY_DIR/data:/app/short-link/data" \
               --entrypoint sh \
               "short-link:$IMAGE_TAG" \
-              -c "chown -R '$app_uid:$app_gid' /app/short-link/data && chmod -R u+rwX /app/short-link/data"
+              -c "chown -R '$app_uid:$app_gid' /app/short-link/data && chmod -R ug+rwX /app/short-link/data"
 
             cd "$DEPLOY_DIR"
             IMAGE_TAG="$IMAGE_TAG" docker compose up -d --no-build --remove-orphans
